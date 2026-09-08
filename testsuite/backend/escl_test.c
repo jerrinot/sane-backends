@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -411,6 +412,85 @@ test_crop_full_surface(void)
         failures++;
     }
     free(result);
+}
+
+struct escl_response {
+    int status;
+    const char *body;
+};
+
+/* Wrap inner status XML in the ScannerStatus envelope. */
+#define status_body(content) \
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" \
+    "<scan:ScannerStatus " \
+    "xmlns:pwg=\"http://www.pwg.org/schemas/2010/12/sm\" " \
+    "xmlns:scan=\"http://schemas.hp.com/imaging/escl/2011/05/03\">" \
+    content \
+    "</scan:ScannerStatus>"
+
+/* Serve `n` responses on a forked loopback server, then run escl_status. */
+static SANE_Status
+run_escl_status(struct escl_response *responses, int n,
+           int source, const char *jobId, SANE_Status *job)
+{
+    ESCL_Device device = { 0 };
+    struct sockaddr_in address = { 0 };
+    char address_text[] = "127.0.0.1";
+    int server_fd, client_fd;
+    socklen_t address_size = sizeof(address);
+    struct timeval accept_timeout = { .tv_sec = 3, .tv_usec = 0 };
+    pid_t child;
+    SANE_Status status;
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        fprintf(stderr, "could not create status test socket\n");
+        failures++;
+        return SANE_STATUS_IO_ERROR;
+    }
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = 0;
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0 ||
+        listen(server_fd, n) < 0 ||
+        getsockname(server_fd, (struct sockaddr *)&address, &address_size) < 0) {
+        fprintf(stderr, "could not configure status test socket\n");
+        close(server_fd);
+        failures++;
+        return SANE_STATUS_IO_ERROR;
+    }
+
+    setsockopt(server_fd, SOL_SOCKET, SO_RCVTIMEO,
+               &accept_timeout, sizeof(accept_timeout));
+    child = fork();
+    if (child == 0) {
+        for (int i = 0; i < n; i++) {
+            client_fd = accept(server_fd, NULL, NULL);
+            if (client_fd < 0)
+                break;
+
+            char request[1024];
+            (void)recv(client_fd, request, sizeof(request), 0);
+            send_http_response(client_fd, responses[i].status,
+                               responses[i].body);
+            close(client_fd);
+        }
+        close(server_fd);
+        _exit(EXIT_SUCCESS);
+    }
+    if (child < 0) {
+        fprintf(stderr, "could not fork status test server\n");
+        close(server_fd);
+        failures++;
+        return SANE_STATUS_IO_ERROR;
+    }
+    close(server_fd);
+
+    device.ip_address = address_text;
+    device.port_nb = ntohs(address.sin_port);
+    status = escl_status(&device, source, jobId, job);
+    waitpid(child, NULL, 0);
+    return status;
 }
 
 int
