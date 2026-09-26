@@ -294,6 +294,12 @@ struct Genesys_Device
     // for sheetfed scanner's, is TRUE when there is a document in the scanner
     bool document = false;
 
+    // set by asic_boot() of chips whose lamp needs it (GL128): the lamp must warm up before the
+    // next calibration (cold start), and the lamp control sequence of the first calibration after
+    // boot is still to be sent
+    bool lamp_warmup_pending = false;
+    bool lamp_boot_sequence_pending = false;
+
     // total bytes read sent to frontend
     size_t total_bytes_read = 0;
     // total bytes read to be sent to frontend
