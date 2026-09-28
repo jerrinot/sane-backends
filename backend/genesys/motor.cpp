@@ -30,6 +30,11 @@ namespace genesys {
 
 unsigned MotorSlope::get_table_step_shifted(unsigned step, StepType step_type) const
 {
+    if (!table.empty()) {
+        // The table is already for the profile's step type.
+        return table[std::min<std::size_t>(step, table.size() - 1)];
+    }
+
     // first two steps are always equal to the initial speed
     if (step < 2) {
         return initial_speed_w >> static_cast<unsigned>(step_type);
@@ -56,6 +61,21 @@ MotorSlope MotorSlope::create_from_steps(unsigned initial_w, unsigned max_w,
     slope.initial_speed_w = initial_w;
     slope.max_speed_w = max_w;
     slope.acceleration = compute_acceleration_for_steps(initial_w, max_w, steps);
+    return slope;
+}
+
+MotorSlope MotorSlope::create_from_table(const std::vector<std::uint16_t>& table,
+                                         StepType step_type)
+{
+    if (table.empty()) {
+        throw SaneException("Empty motor slope table");
+    }
+    unsigned step_shift = static_cast<unsigned>(step_type);
+    MotorSlope slope;
+    slope.initial_speed_w = static_cast<unsigned>(table.front()) << step_shift;
+    slope.max_speed_w = static_cast<unsigned>(table.back()) << step_shift;
+    slope.max_step_count = static_cast<unsigned>(table.size());
+    slope.table = table;
     return slope;
 }
 
@@ -157,6 +177,7 @@ std::ostream& operator<<(std::ostream& out, const MotorSlope& slope)
         << "    initial_speed_w: " << slope.initial_speed_w << '\n'
         << "    max_speed_w: " << slope.max_speed_w << '\n'
         << "    a: " << slope.acceleration << '\n'
+        << "    table size: " << slope.table.size() << '\n'
         << '}';
     return out;
 }

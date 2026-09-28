@@ -247,6 +247,25 @@ void test_create_slope_table_large_half_step()
     ASSERT_EQ(table.pixeltime_sum(), 367399u);
 }
 
+void test_create_slope_table_from_table()
+{
+    // An exact vendor table, already for quarter steps: used as is, not shifted.
+    auto slope = MotorSlope::create_from_table({ 8000, 4000, 3000, 2000, 1000 }, StepType::QUARTER);
+    ASSERT_EQ(slope.initial_speed_w, 32000u);
+    ASSERT_EQ(slope.max_speed_w, 4000u);
+    ASSERT_EQ(slope.get_table_step_shifted(0, StepType::QUARTER), 8000u);
+    ASSERT_EQ(slope.get_table_step_shifted(3, StepType::QUARTER), 2000u);
+    ASSERT_EQ(slope.get_table_step_shifted(10, StepType::QUARTER), 1000u);
+
+    auto table = create_slope_table_for_speed(slope, 12000, StepType::QUARTER, 1, 4, 1024);
+    std::vector<std::uint16_t> expected_table = { 8000, 4000, 3000, 3000 };
+    ASSERT_EQ(table.table, expected_table);
+
+    table = create_slope_table_for_speed(slope, 0, StepType::QUARTER, 1, 4, 1024);
+    expected_table = { 8000, 4000, 3000, 2000, 1000 };
+    ASSERT_EQ(table.table, expected_table);
+}
+
 void test_motor()
 {
     test_create_slope_table_small_full_step();
@@ -254,6 +273,7 @@ void test_motor()
     test_create_slope_table_small_half_step();
     test_create_slope_table_large_full_step();
     test_create_slope_table_large_half_step();
+    test_create_slope_table_from_table();
 }
 
 } // namespace genesys
