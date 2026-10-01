@@ -17,6 +17,20 @@
 
 static int failures;
 
+static int cancel_count;
+
+typedef struct
+{
+  SANE_Status status;
+  const SANE_Byte *payload;
+  SANE_Int len;
+}
+ReadEntry;
+
+static ReadEntry read_script[8];
+static int read_script_len;
+static int read_script_pos;
+
 SANE_Status
 sane_init (SANE_Word * version_code, SANE_Auth_Callback authorize)
 {
@@ -98,17 +112,29 @@ SANE_Status
 sane_read (SANE_Handle handle, SANE_Byte * buffer,
 	   SANE_Int max_length, SANE_Int * length)
 {
+  const ReadEntry *entry;
+
   (void) handle;
-  (void) buffer;
-  (void) max_length;
-  *length = 0;
-  return SANE_STATUS_EOF;
+  if (read_script_pos >= read_script_len)
+    {
+      *length = 0;
+      return SANE_STATUS_EOF;
+    }
+  entry = &read_script[read_script_pos++];
+  if (entry->len > max_length)
+    *length = max_length;
+  else
+    *length = entry->len;
+  if (entry->status == SANE_STATUS_GOOD && *length > 0)
+    memcpy (buffer, entry->payload, *length);
+  return entry->status;
 }
 
 void
 sane_cancel (SANE_Handle handle)
 {
   (void) handle;
+  cancel_count++;
 }
 
 SANE_Status
@@ -244,6 +270,264 @@ test_check_v6_in_range (void)
 }
 #endif /* ENABLE_IPV6 */
 
+static SANE_Byte payload_a[10] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+static SANE_Byte payload_b[10] = { 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
+static SANE_Byte payload_c[8] = { 20, 21, 22, 23, 24, 25, 26, 27 };
+
+static void
+script_reads (int n, SANE_Status final_status)
+{
+  int i;
+
+  read_script[0].status = SANE_STATUS_GOOD;
+  read_script[0].payload = payload_a;
+  read_script[0].len = 10;
+  read_script[1].status = SANE_STATUS_GOOD;
+  read_script[1].payload = payload_b;
+  read_script[1].len = 10;
+  read_script[2].status = SANE_STATUS_GOOD;
+  read_script[2].payload = payload_c;
+  read_script[2].len = 8;
+  read_script[3].status = final_status;
+  read_script[3].payload = NULL;
+  read_script[3].len = 0;
+  read_script_len = n + 1;
+  read_script_pos = 0;
+  for (i = 4; i < 8; ++i)
+    {
+      read_script[i].status = SANE_STATUS_EOF;
+      read_script[i].payload = NULL;
+      read_script[i].len = 0;
+    }
+}
+
+static int
+check_expected_stream (const char *name, int fd, SANE_Status final_status)
+{
+  SANE_Byte expected[64];
+  SANE_Byte got[64];
+  size_t expect_len, total;
+  ssize_t n;
+
+  memset (expected, 0, sizeof (expected));
+  total = 0;
+  /* first record: reclen 10 + payload */
+  expected[0] = 0;
+  expected[1] = 0;
+  expected[2] = 0;
+  expected[3] = 10;
+  memcpy (expected + 4, payload_a, 10);
+  total = 14;
+  /* second record: reclen 10 + payload */
+  expected[total + 0] = 0;
+  expected[total + 1] = 0;
+  expected[total + 2] = 0;
+  expected[total + 3] = 10;
+  memcpy (expected + total + 4, payload_b, 10);
+  total += 14;
+  /* third record: reclen 8 + payload */
+  expected[total + 0] = 0;
+  expected[total + 1] = 0;
+  expected[total + 2] = 0;
+  expected[total + 3] = 8;
+  memcpy (expected + total + 4, payload_c, 8);
+  total += 12;
+  /* terminal record: 0xffffffff + status byte */
+  expected[total + 0] = 0xff;
+  expected[total + 1] = 0xff;
+  expected[total + 2] = 0xff;
+  expected[total + 3] = 0xff;
+  expected[total + 4] = (SANE_Byte) final_status;
+  total += 5;
+
+  memset (got, 0, sizeof (got));
+  expect_len = 0;
+  while (expect_len < total)
+    {
+      n = read (fd, got + expect_len, total - expect_len);
+      if (n <= 0)
+	{
+	  fprintf (stderr, "%s: short read on data fd (%lu of %lu bytes)\n",
+		   name, (unsigned long) expect_len, (unsigned long) total);
+	  close (fd);
+	  return -1;
+	}
+      expect_len += n;
+    }
+  if (memcmp (expected, got, total) != 0)
+    {
+      fprintf (stderr, "%s: data stream mismatch\n", name);
+      close (fd);
+      return -1;
+    }
+  return 0;
+}
+
+static int
+make_handles (void)
+{
+  if (!handle)
+    {
+      handle = calloc (16, sizeof (handle[0]));
+      if (!handle)
+	return -1;
+      num_handles = 16;
+    }
+  handle[0].inuse = 1;
+  handle[0].handle = (SANE_Handle) &handle;
+  handle[0].scanning = 1;
+  handle[0].docancel = 0;
+  return 0;
+}
+
+static void
+init_plain_wire (Wire * w, int fd)
+{
+  memset (w, 0, sizeof (*w));
+  w->io.fd = fd;
+}
+
+static void
+init_codec_wire (Wire * w, int fd)
+{
+  sanei_w_init (w, sanei_codec_bin_init);
+  w->io.read = read;
+  w->io.write = write;
+  w->io.fd = fd;
+}
+
+static int
+setup_do_scan (const char *name, int n, SANE_Status final_status,
+	       int *data_fds, int *ctl_fds)
+{
+  buffer_size = 32;
+  cancel_count = 0;
+  if (make_handles () < 0
+      || socketpair (AF_UNIX, SOCK_STREAM, 0, data_fds) < 0
+      || socketpair (AF_UNIX, SOCK_STREAM, 0, ctl_fds) < 0)
+    {
+      fprintf (stderr, "%s: setup failed\n", name);
+      failures++;
+      return -1;
+    }
+  script_reads (n, final_status);
+  return 0;
+}
+
+static void
+check_scan_result (const char *name, int expected_cancels)
+{
+  if (handle[0].scanning != 0 || handle[0].docancel != 0)
+    {
+      fprintf (stderr, "%s: scanning=%d docancel=%d\n",
+	       name, handle[0].scanning, handle[0].docancel);
+      failures++;
+    }
+  if (cancel_count != expected_cancels)
+    {
+      fprintf (stderr, "%s: cancel_count=%d\n", name, cancel_count);
+      failures++;
+    }
+}
+
+#define READ_FD 0
+#define WRITE_FD 1
+
+static void
+test_do_scan_stream (const char *name, SANE_Status final_status)
+{
+  int data_fds[2];
+  int ctl_fds[2];
+  Wire w;
+
+  if (setup_do_scan (name, 3, final_status, data_fds, ctl_fds) < 0)
+    return;
+
+  init_plain_wire (&w, ctl_fds[READ_FD]);
+  do_scan (&w, 0, data_fds[WRITE_FD]);
+
+  check_scan_result (name, 0);
+  if (check_expected_stream (name, data_fds[READ_FD], final_status) < 0)
+    failures++;
+  close (data_fds[WRITE_FD]);
+  close (ctl_fds[READ_FD]);
+  close (ctl_fds[WRITE_FD]);
+}
+
+static void
+test_do_scan_write_failure (void)
+{
+  int data_fds[2];
+  int ctl_fds[2];
+  Wire w;
+
+  if (setup_do_scan ("do_scan_write_failure", 1, SANE_STATUS_EOF,
+		     data_fds, ctl_fds) < 0)
+    return;
+
+  close (data_fds[READ_FD]);
+
+  init_plain_wire (&w, ctl_fds[READ_FD]);
+  do_scan (&w, 0, data_fds[WRITE_FD]);
+
+  check_scan_result ("do_scan_write_failure", 1);
+  close (data_fds[WRITE_FD]);
+  close (ctl_fds[READ_FD]);
+  close (ctl_fds[WRITE_FD]);
+}
+
+static void
+test_do_scan_control_eof (void)
+{
+  int data_fds[2];
+  int ctl_fds[2];
+  Wire w;
+
+  if (setup_do_scan ("do_scan_control_eof", 1, SANE_STATUS_EOF,
+		     data_fds, ctl_fds) < 0)
+    return;
+
+  init_codec_wire (&w, ctl_fds[READ_FD]);
+  close (ctl_fds[WRITE_FD]);
+  do_scan (&w, 0, data_fds[WRITE_FD]);
+
+  check_scan_result ("do_scan_control_eof", 1);
+  sanei_w_exit (&w);
+  close (data_fds[WRITE_FD]);
+  close (data_fds[READ_FD]);
+}
+
+static void
+test_do_scan_rpc_cancel (void)
+{
+  int data_fds[2];
+  int ctl_fds[2];
+  Wire w, peer;
+  SANE_Word procnum, arg;
+
+  if (setup_do_scan ("do_scan_rpc_cancel", 1, SANE_STATUS_EOF,
+		     data_fds, ctl_fds) < 0)
+    return;
+
+  init_codec_wire (&peer, ctl_fds[WRITE_FD]);
+  sanei_w_set_dir (&peer, WIRE_ENCODE);
+  procnum = SANE_NET_CANCEL;
+  sanei_w_word (&peer, &procnum);
+  arg = 0;
+  sanei_w_word (&peer, &arg);
+  sanei_w_set_dir (&peer, WIRE_DECODE);
+  sanei_w_exit (&peer);
+
+  init_codec_wire (&w, ctl_fds[READ_FD]);
+  do_scan (&w, 0, data_fds[WRITE_FD]);
+
+  check_scan_result ("do_scan_rpc_cancel", 2);
+  sanei_w_exit (&w);
+  close (data_fds[WRITE_FD]);
+  close (data_fds[READ_FD]);
+  close (ctl_fds[READ_FD]);
+}
+
 int
 main (void)
 {
@@ -251,11 +535,17 @@ main (void)
   log_to_syslog = SANE_FALSE;
   prog_name = "saned_test";
   alarm (60);
+  signal (SIGPIPE, SIG_IGN);
 
   test_check_v4_in_range ();
 #ifdef ENABLE_IPV6
   test_check_v6_in_range ();
 #endif
+  test_do_scan_stream ("do_scan_data_eof", SANE_STATUS_EOF);
+  test_do_scan_stream ("do_scan_error_status", SANE_STATUS_IO_ERROR);
+  test_do_scan_write_failure ();
+  test_do_scan_control_eof ();
+  test_do_scan_rpc_cancel ();
 
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
