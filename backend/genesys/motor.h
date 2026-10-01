@@ -94,10 +94,20 @@ struct MotorSlope
     // acceleration in steps per pixeltime squared.
     float acceleration = 0;
 
+    // Optional exact slope table (pixeltime per step, already for the profile's step type),
+    // for motors whose vendor driver uses a ramp that does not follow the model above. When
+    // set, it is used as is instead of the formula; steps past its end use the last value.
+    std::vector<std::uint16_t> table;
+
     unsigned get_table_step_shifted(unsigned step, StepType step_type) const;
 
     static MotorSlope create_from_steps(unsigned initial_w, unsigned max_w,
                                         unsigned steps);
+
+    // initial_speed_w and max_speed_w are set to the table's first and last values scaled back
+    // to full steps, so that code comparing them with shifted values stays consistent.
+    static MotorSlope create_from_table(const std::vector<std::uint16_t>& table,
+                                        StepType step_type);
 };
 
 struct MotorSlopeTable

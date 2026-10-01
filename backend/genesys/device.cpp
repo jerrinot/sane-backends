@@ -233,6 +233,8 @@ std::ostream& operator<<(std::ostream& out, const Genesys_Device& dev)
         << "    read_active: " << dev.read_active << '\n'
         << "    parking: " << dev.parking << '\n'
         << "    document: " << dev.document << '\n'
+        << "    lamp_warmup_pending: " << dev.lamp_warmup_pending << '\n'
+        << "    lamp_boot_sequence_pending: " << dev.lamp_boot_sequence_pending << '\n'
         << "    total_bytes_read: " << dev.total_bytes_read << '\n'
         << "    total_bytes_to_read: " << dev.total_bytes_to_read << '\n'
         << "    session: " << format_indent_braced_list(4, dev.session) << '\n'

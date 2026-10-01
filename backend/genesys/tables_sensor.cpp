@@ -3658,6 +3658,85 @@ void genesys_init_sensor_tables()
 
 
     sensor = Genesys_Sensor();
+    sensor.sensor_id = SensorId::CCD_PLUSTEK_OPTICFILM_8200I_SE; // gl128
+    sensor.full_resolution = 7200;
+    sensor.register_dpihw = 1200;
+    // Not used: genesys' offset, gain and shading calibration are disabled for
+    // this model; gl128.cpp calibrates in the ASIC.
+    sensor.black_pixels = 0;
+    sensor.fau_gain_white_ref = 0;
+    sensor.gain_white_ref = 0;
+    sensor.exposure = { 0x0000, 0x0000, 0x0000 };
+    sensor.gamma = { 1.0f, 1.0f, 1.0f };
+    // Shading is done by the ASIC (see gl128.cpp); the model disables
+    // genesys' shading calibration.
+    sensor.use_host_side_calib = true;
+    // Registers SilverFast sets before every acquisition, at every resolution
+    // (pyopticfilm SCAN_REGS).
+    sensor.custom_regs = {
+        { 0x04, 0x42 }, { 0x05, 0x40 }, { 0x06, 0xf0 }, { 0x0b, 0x4c },
+        { 0x1c, 0x20 }, { 0x1d, 0x80 }, { 0x1e, 0x20 },
+        { 0x3b, 0x01 },
+        { 0x52, 0x0b }, { 0x53, 0x0d }, { 0x54, 0x0f }, { 0x55, 0x01 },
+        { 0x56, 0x05 }, { 0x57, 0x07 },
+        { 0x5a, 0x31 }, { 0x5b, 0x79 },
+        { 0x70, 0x0a }, { 0x71, 0x0b }, { 0x72, 0x0c }, { 0x73, 0x0d },
+        { 0x81, 0x40 },
+        { 0x8a, 0x00 }, { 0x8b, 0x00 }, { 0x8c, 0x00 }, { 0x8d, 0x00 },
+        { 0x8e, 0x00 }, { 0x8f, 0x00 },
+        { 0x90, 0x00 }, { 0x91, 0x00 }, { 0x92, 0x00 },
+        { 0x114, 0x80 }, { 0x115, 0x80 },
+    };
+    {
+        // Per resolution (pyopticfilm REGISTER_DPISET, OUTPUT_PIXEL_OFFSET,
+        // DUMMY_BY_DPI, PIXEL_CLOCK_BY_DPI, LPERIOD_BY_DPI; LPERIOD at 1800 dpi
+        // from SilverFast's own 1800 dpi capture, where pyopticfilm has 11490).
+        // The ASIC scans at DPISET * 6: 150 and 300 dpi scan at 600 and are
+        // averaged on the host. The pixel clock goes to 0xa5 and 0xab. The CCD
+        // stagger is set per scan by gl128 calculate_scan_session().
+        struct CustomSensorSettings
+        {
+            ValueFilterAny<unsigned> resolutions;
+            ScanMethod method;
+            unsigned register_dpiset;
+            int output_pixel_offset;
+            int dummy_pixel;
+            int exposure_lperiod;
+            unsigned pixel_clock;
+        };
+
+        CustomSensorSettings custom_settings[] = {
+            { { 150 },  ScanMethod::TRANSPARENCY,  100,  10, 0x01, 11064, 0x02 },
+            { { 300 },  ScanMethod::TRANSPARENCY,  100,  10, 0x01, 11064, 0x02 },
+            { { 600 },  ScanMethod::TRANSPARENCY,  100,  10, 0x01, 11064, 0x02 },
+            { { 720 },  ScanMethod::TRANSPARENCY,  120,  12, 0x01, 11106, 0x02 },
+            { { 900 },  ScanMethod::TRANSPARENCY,  150,  15, 0x01, 11170, 0x02 },
+            { { 1200 }, ScanMethod::TRANSPARENCY,  200,  20, 0x02, 11277, 0x02 },
+            { { 1440 }, ScanMethod::TRANSPARENCY,  240,  24, 0x02, 11362, 0x02 },
+            { { 1800 }, ScanMethod::TRANSPARENCY,  300,  30, 0x02, 11206, 0x02 },
+            { { 2400 }, ScanMethod::TRANSPARENCY,  400,  40, 0x03, 11703, 0x01 },
+            { { 3600 }, ScanMethod::TRANSPARENCY,  600,  60, 0x04, 13407, 0x01 },
+            { { 7200 }, ScanMethod::TRANSPARENCY, 1200, 120, 0x17, 15963, 0x01 },
+        };
+
+        const auto common_regs = sensor.custom_regs;
+        for (const CustomSensorSettings& setting : custom_settings) {
+            sensor.resolutions = setting.resolutions;
+            sensor.method = setting.method;
+            sensor.shading_resolution = setting.resolutions.values()[0];
+            sensor.register_dpiset = setting.register_dpiset;
+            sensor.output_pixel_offset = setting.output_pixel_offset;
+            sensor.dummy_pixel = setting.dummy_pixel;
+            sensor.exposure_lperiod = setting.exposure_lperiod;
+            sensor.custom_regs = common_regs;
+            sensor.custom_regs.set_value(0xa5, setting.pixel_clock);
+            sensor.custom_regs.set_value(0xab, setting.pixel_clock);
+            s_sensors->push_back(sensor);
+        }
+    }
+
+
+    sensor = Genesys_Sensor();
     sensor.sensor_id = SensorId::CCD_IMG101; // gl846
     sensor.resolutions = { 75, 100, 150, 300, 600, 1200 };
     sensor.exposure_lperiod = 11000;
