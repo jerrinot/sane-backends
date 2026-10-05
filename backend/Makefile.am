@@ -1964,8 +1964,9 @@ libsane_v4l_la_LIBADD = $(COMMON_LIBS) \
     $(LIBV4L_LIBS)
 EXTRA_DIST += v4l.conf.in
 
-libxerox_mfp_la_SOURCES = xerox_mfp.c xerox_mfp-usb.c xerox_mfp-tcp.c xerox_mfp.h
-libxerox_mfp_la_CPPFLAGS = $(AM_CPPFLAGS) -DBACKEND_NAME=xerox_mfp
+libxerox_mfp_la_SOURCES = xerox_mfp.c xerox_mfp-usb.c xerox_mfp-tcp.c xerox_mfp.h \
+    xerox_mfp-discovery.c xerox_mfp-discovery.h
+libxerox_mfp_la_CPPFLAGS = $(AM_CPPFLAGS) -DBACKEND_NAME=xerox_mfp $(SNMP_CFLAGS)
 
 nodist_libsane_xerox_mfp_la_SOURCES = xerox_mfp-s.c
 libsane_xerox_mfp_la_CPPFLAGS = $(AM_CPPFLAGS) -DBACKEND_NAME=xerox_mfp
@@ -1978,7 +1979,7 @@ libsane_xerox_mfp_la_LIBADD = $(COMMON_LIBS) \
     sane_strstatus.lo \
     @SANEI_SANEI_JPEG_LO@ $(JPEG_LIBS) ../sanei/sanei_usb.lo \
     ../sanei/sanei_tcp.lo \
-    $(MATH_LIB) $(SOCKET_LIBS) $(USB_LIBS) $(RESMGR_LIBS)
+    $(MATH_LIB) $(SOCKET_LIBS) $(USB_LIBS) $(RESMGR_LIBS) $(SNMP_LIBS)
 EXTRA_DIST += xerox_mfp.conf.in
 
 nodist_libdll_preload_la_SOURCES = dll-preload.h

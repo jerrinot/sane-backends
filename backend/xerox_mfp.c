@@ -1041,7 +1041,7 @@ static transport *tr_from_devname(SANE_String_Const devname)
 static SANE_Status
 list_one_device(SANE_String_Const devname)
 {
-    struct device *dev;
+    struct device *dev, *existing;
     SANE_Status status;
     transport *tr;
 
@@ -1059,11 +1059,29 @@ list_one_device(SANE_String_Const devname)
         return SANE_STATUS_NO_MEM;
 
     dev->sane.name = strdup(devname);
+    if (!dev->sane.name) {
+        free(dev);
+        return SANE_STATUS_NO_MEM;
+    }
+    dev->dn = -1;
     dev->io = tr;
     status = tr->dev_open(dev);
     if (status != SANE_STATUS_GOOD) {
         dev_free(dev);
         return status;
+    }
+
+    /* Deduplicate hostname/IP aliases, keeping the first configured name. */
+    if (tr == &available_transports[TRANSPORT_TCP] && dev->tcp_port) {
+        for (existing = devices_head; existing; existing = existing->next) {
+            if (existing->io == tr
+                && existing->tcp_address == dev->tcp_address
+                && existing->tcp_port == dev->tcp_port) {
+                tr->dev_close(dev);
+                dev_free(dev);
+                return SANE_STATUS_GOOD;
+            }
+        }
     }
 
     /*  status = dev_cmd (dev, CMD_ABORT);*/

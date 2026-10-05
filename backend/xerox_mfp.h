@@ -53,6 +53,8 @@ struct device {
     struct device *next;
     SANE_Device sane;
     int dn;			/* usb file descriptor */
+    unsigned int tcp_address;   /* connected IPv4 endpoint, network byte order */
+    unsigned int tcp_port;
     SANE_Byte res[1024];		/* buffer for responses */
     size_t reslen;		/* response len */
     SANE_Option_Descriptor opt[NUM_OPTIONS];

@@ -200,7 +200,7 @@ AC_CHECK_HEADERS(fcntl.h unistd.h libc.h sys/dsreq.h sys/select.h \
     sys/socket.h sys/io.h sys/hw.h sys/types.h linux/ppdev.h \
     dev/ppbus/ppi.h machine/cpufunc.h sys/sem.h poll.h \
     windows.h be/kernel/OS.h limits.h sys/ioctl.h asm/types.h\
-    netinet/in.h ifaddrs.h pwd.h getopt.h)
+    netinet/in.h ifaddrs.h net/if.h arpa/inet.h pwd.h getopt.h)
 AC_CHECK_HEADERS([asm/io.h],,,[#include <sys/types.h>])
 
 SANE_CHECK_MISSING_HEADERS
@@ -300,7 +300,7 @@ dnl define HAVE_* values for network functions.  This may require
 dnl SOCKET_LIBS so set LIBS temporarily.
 save_LIBS="$LIBS"
 LIBS="$LIBS $SOCKET_LIBS"
-AC_CHECK_FUNCS(inet_addr inet_aton inet_ntoa)
+AC_CHECK_FUNCS(inet_addr inet_aton inet_ntoa getifaddrs clock_gettime)
 LIBS="$save_LIBS"
 
 if test "$ac_cv_header_be_kernel_OS_h" = "yes" ; then

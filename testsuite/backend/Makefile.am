@@ -8,11 +8,17 @@ if WITH_GENESYS_TESTS
 SUBDIRS = genesys
 endif
 
+check_PROGRAMS = xerox_mfp_discovery_test
+TESTS = $(check_PROGRAMS)
+xerox_mfp_discovery_test_SOURCES = xerox_mfp_discovery_test.c
+xerox_mfp_discovery_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_builddir)/include \
+    -I$(top_srcdir)/include -I$(top_srcdir) $(SNMP_CFLAGS)
+xerox_mfp_discovery_test_LDADD = ../../lib/liblib.la $(SOCKET_LIBS) $(SNMP_LIBS)
+
 if have_libavahi
 if have_libcurl
 if have_libxml2
-check_PROGRAMS = escl_test
-TESTS = $(check_PROGRAMS)
+check_PROGRAMS += escl_test
 
 escl_test_SOURCES = escl_test.c
 escl_test_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir) -I$(top_srcdir)/include \

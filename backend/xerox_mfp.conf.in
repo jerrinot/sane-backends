@@ -1,6 +1,13 @@
 #xerox_mfp.conf
 # all entries are sorted in USB IDs numerical order
 
+# Optional discovery of Samsung network scanners (requires Net-SNMP).
+# Query active local IPv4 broadcast interfaces, or restrict to one interface:
+#tcp auto
+#tcp auto eth0
+# Manual configuration: tcp HOST [PORT] (default port: 9400).
+# When mixed with discovery, the first entry for an endpoint keeps its name.
+
 ######################
 ### Samsung Models ###
 ######################

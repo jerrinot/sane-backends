@@ -15,7 +15,7 @@ Please see full list of supported devices at
 .I @CONFIGDIR@/xerox_mfp.conf
 USB scanners do not need any configuration.
 
-For SCX\-4500W in network mode you need to specify
+For a supported scanner in network mode you can specify
 .PP
 .RS
 .B tcp host_address [port]
@@ -26,6 +26,39 @@ The
 is passed through resolver, thus can be a dotted quad or a name from
 .I /etc/hosts
 or resolvable through DNS.
+The default TCP port is 9400.
+.PP
+To enable automatic discovery of Samsung network scanners, specify
+.PP
+.RS
+.B tcp auto [interface]
+.RE
+.PP
+Discovery sends SNMPv1 GetNext requests using the
+.B public
+community to UDP port 161 on active local IPv4 broadcast interfaces.
+The optional
+.B interface
+restricts discovery to a named interface, for example
+.BR "tcp auto eth0" .
+Devices must expose Samsung's DeviceID scalar and report the SCN scanner
+capability. Each candidate is verified using the normal scanner inquiry
+on TCP port 9400.
+.PP
+The discovery reply window is one second, shared across interfaces, with
+three requests per interface. Candidate verification has a shared five-second
+budget; an inquiry already in progress can finish after that budget.
+At most 16 interface addresses and 32 distinct scanner addresses are processed.
+Discovery is disabled by default. It requires a build with Net-SNMP support
+(configure option --with-snmp), interface enumeration and a monotonic clock
+on the host platform. Builds without Net-SNMP support still accept manual
+network configuration. IPv6, routed discovery, other SNMP
+communities and devices without the Samsung DeviceID scalar require manual
+configuration. Firewalls must allow the UDP replies to the client's
+ephemeral port.
+.PP
+Manual entries and discovery can be combined. Aliases of the same IPv4
+address and TCP port appear only once, using the first configured name.
 .SH FILES
 .TP
 .I @CONFIGDIR@/xerox_mfp.conf
@@ -50,7 +83,9 @@ Example:
 export SANE_DEBUG_XEROX_MFP=4
 
 .SH LIMITATIONS
-Multicast autoconfiguration for LAN scanners is not implemented yet. IPv6 addressing has never been tested.
+Automatic discovery is limited to local IPv4 networks and the Samsung
+DeviceID scalar; it has been tested with the M2070 Series. IPv6 addressing
+has never been tested.
 
 .SH BUGS AND SUPPORT
 If you have found a bug or need support please follow open\-source way of acquiring support via

@@ -1,0 +1,3 @@
+xerox_mfp: Add opt-in Net-SNMP discovery of Samsung network scanners via
+"tcp auto [interface]". Deduplicate manual
+and discovered IPv4 aliases and bound connections to numeric IPv4 addresses.
